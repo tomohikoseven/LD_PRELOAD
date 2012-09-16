@@ -1,0 +1,63 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<signal.h>
+#include<setjmp.h>
+
+#define ALT_STACK_SIZE (64*1024)
+
+static sigjmp_buf return_point;
+
+static void
+signal_handler( int sig )
+{
+    if( sig == SIGSEGV )
+    {
+        siglongjmp( return_point, 1 );
+    }
+}
+
+static void
+register_sigaltstack()
+{
+    stack_t newSS;
+    stack_t oldSS;
+
+    newSS.ss_sp     = malloc( ALT_STACK_SIZE );
+    newSS.ss_size   = ALT_STACK_SIZE;
+    newSS.ss_flags  = 0;
+
+    sigaltstack( &newSS, &oldSS );
+}
+
+int
+main()
+{
+    struct sigaction newAct;
+    struct sigaction oldAct;
+
+    // 代替スタック作成
+    register_sigaltstack();
+
+    // シグナル集合の初期化(空)
+    sigemptyset( &newAct.sa_mask );
+    // シグナル集合の設定
+    sigaddset( &newAct.sa_mask, SIGSEGV );
+    // ハンドラ設定
+    newAct.sa_handler = signal_handler;
+    // シグナル発生時のスタックを代替スタックに設定
+    newAct.sa_flags     = SA_ONSTACK;
+
+    // SEGV 時の動作登録
+    sigaction( SIGSEGV, &newAct, &oldAct );
+
+    if( sigsetjmp( return_point, 1 ) == 0 )
+    {
+        puts("hello world!");
+    }
+    else
+    {
+        fprintf( stderr, "stack overflow error\n" );
+    }
+
+    return 0;
+}
